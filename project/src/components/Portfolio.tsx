@@ -1,6 +1,7 @@
 import React from 'react';
 import { Trash2 } from 'lucide-react';
 import { PortfolioStock } from '../types';
+import SectorPieChart from './SectorPieChart';
 
 interface PortfolioProps {
   stocks: PortfolioStock[];
@@ -17,17 +18,37 @@ const Portfolio = ({ stocks, onRemoveStock }: PortfolioProps) => {
 
   const gainLossPercent = (totalGainLoss / (totalValue - totalGainLoss)) * 100;
 
+  // Calculate sector allocation for pie chart
+  const sectorAllocation = stocks.reduce((acc: { [key: string]: number }, stock) => {
+    const sector = stock.stats.sector || 'Unknown';
+    const stockValue = stock.shares * stock.stats.price;
+    acc[sector] = (acc[sector] || 0) + (stockValue / totalValue * 100);
+    return acc;
+  }, {});
+
+  const pieChartData = Object.entries(sectorAllocation)
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value);
+
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold">Your Portfolio</h2>
-        <div className="text-right">
-          <p className="text-gray-600">Total Value</p>
-          <p className="text-2xl font-bold">${totalValue.toFixed(2)}</p>
-          <p className={`text-sm ${totalGainLoss >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-            {totalGainLoss >= 0 ? '+' : ''}{totalGainLoss.toFixed(2)} ({gainLossPercent.toFixed(2)}%)
-          </p>
+      <div className="flex justify-between items-start mb-6">
+        <div>
+          <h2 className="text-2xl font-bold">Your Portfolio</h2>
+          <div className="mt-2">
+            <p className="text-gray-600">Total Value</p>
+            <p className="text-2xl font-bold">${totalValue.toFixed(2)}</p>
+            <p className={`text-sm ${totalGainLoss >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+              {totalGainLoss >= 0 ? '+' : ''}{totalGainLoss.toFixed(2)} ({gainLossPercent.toFixed(2)}%)
+            </p>
+          </div>
         </div>
+        {stocks.length > 0 && (
+          <div className="w-1/2">
+            <h3 className="text-lg font-semibold mb-4">Sector Allocation</h3>
+            <SectorPieChart data={pieChartData} />
+          </div>
+        )}
       </div>
 
       <div className="overflow-x-auto">
@@ -51,7 +72,12 @@ const Portfolio = ({ stocks, onRemoveStock }: PortfolioProps) => {
 
               return (
                 <tr key={stock.symbol} className="border-b">
-                  <td className="py-3">{stock.symbol}</td>
+                  <td className="py-3">
+                    <div>
+                      <div className="font-medium">{stock.symbol}</div>
+                      <div className="text-sm text-gray-500">{stock.stats.sector}</div>
+                    </div>
+                  </td>
                   <td className="text-right">{stock.shares}</td>
                   <td className="text-right">${stock.averagePrice.toFixed(2)}</td>
                   <td className="text-right">${stock.stats.price.toFixed(2)}</td>

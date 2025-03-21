@@ -1,17 +1,34 @@
 import { useState, useEffect } from 'react';
-import { PortfolioStock } from '../types';
+import { PortfolioStock, UserPortfolio } from '../types';
 
-const STORAGE_KEY = 'stock-portfolio';
+const STORAGE_KEY = 'user_portfolios';
 
-export const usePortfolio = () => {
+export const usePortfolio = (username: string | null) => {
   const [portfolio, setPortfolio] = useState<PortfolioStock[]>(() => {
+    if (!username) return [];
     const saved = localStorage.getItem(STORAGE_KEY);
-    return saved ? JSON.parse(saved) : [];
+    if (!saved) return [];
+    
+    const portfolios: UserPortfolio[] = JSON.parse(saved);
+    const userPortfolio = portfolios.find(p => p.username === username);
+    return userPortfolio ? userPortfolio.stocks : [];
   });
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(portfolio));
-  }, [portfolio]);
+    if (!username) return;
+
+    const saved = localStorage.getItem(STORAGE_KEY);
+    const portfolios: UserPortfolio[] = saved ? JSON.parse(saved) : [];
+    
+    const existingPortfolioIndex = portfolios.findIndex(p => p.username === username);
+    if (existingPortfolioIndex >= 0) {
+      portfolios[existingPortfolioIndex].stocks = portfolio;
+    } else {
+      portfolios.push({ username, stocks: portfolio });
+    }
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(portfolios));
+  }, [portfolio, username]);
 
   const addStock = (stock: PortfolioStock) => {
     setPortfolio(prev => [...prev, stock]);

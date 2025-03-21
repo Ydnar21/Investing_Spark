@@ -23,6 +23,14 @@ export interface StockStats {
   beta?: number;
 }
 
+export interface StockSearchResult {
+  symbol: string;
+  name: string;
+  type: string;
+  region: string;
+  currency: string;
+}
+
 export interface PortfolioStock {
   symbol: string;
   shares: number;
@@ -33,11 +41,11 @@ export interface PortfolioStock {
 export interface StockAnalytics {
   technicalSignals: {
     trend: 'bullish' | 'bearish' | 'neutral';
-    strength: number; // 0-100
+    strength: number;
     description: string;
   };
   fundamentals: {
-    valueMetric: number; // 0-100
+    valueMetric: number;
     description: string;
   };
   riskMetrics: {
@@ -63,9 +71,17 @@ export interface PortfolioAnalysis {
 export interface User {
   username: string;
   password: string;
+  email: string;
 }
 
 export interface AuthState {
   isAuthenticated: boolean;
   user: string | null;
 }
+
+export interface UserPortfolio {
+  username: string;
+  stocks: PortfolioStock[];
+}
+
+export type HistoricalDataRange = '1W' | '1M' | '3M' | '6M' | '1Y' | '5Y' | 'ALL';
