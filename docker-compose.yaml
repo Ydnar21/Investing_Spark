@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - VITE_ALPHA_VANTAGE_API_KEY=demo
+    restart: unless-stopped
