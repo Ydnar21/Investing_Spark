@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Plus } from 'lucide-react';
 
 interface AddStockFormProps {
-  onAddStock: (symbol: string, shares: number, averagePrice: number) => Promise<void>;
+  onAddStock: (symbol: string, shares: number, averagePrice: number) => Promise<boolean>;
 }
 
 const AddStockForm = ({ onAddStock }: AddStockFormProps) => {
@@ -11,6 +11,38 @@ const AddStockForm = ({ onAddStock }: AddStockFormProps) => {
   const [averagePrice, setAveragePrice] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const handleSymbolBlur = async () => {
+    if (!symbol) return;
+    
+    try {
+      const response = await fetch(
+        `https://api.polygon.io/v3/reference/tickers?ticker=${symbol.toUpperCase()}&market=stocks&active=true&apiKey=${import.meta.env.VITE_POLYGON_API_KEY}`,
+        {
+          headers: {
+            'Accept': 'application/json'
+          }
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch stock data');
+      }
+
+      const data = await response.json();
+      
+      if (!data.results || data.results.length === 0) {
+        setError('Invalid stock symbol');
+        return;
+      }
+
+      const stockData = data.results[0];
+      setAveragePrice(stockData.last_trade_price?.toString() || '');
+    } catch (err) {
+      console.error('Error fetching stock data:', err);
+      setError('Failed to fetch stock data');
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,6 +55,25 @@ const AddStockForm = ({ onAddStock }: AddStockFormProps) => {
     setLoading(true);
 
     try {
+      const response = await fetch(
+        `https://api.polygon.io/v3/reference/tickers?ticker=${symbol.toUpperCase()}&market=stocks&active=true&apiKey=${import.meta.env.VITE_POLYGON_API_KEY}`,
+        {
+          headers: {
+            'Accept': 'application/json'
+          }
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch stock data');
+      }
+
+      const data = await response.json();
+      
+      if (!data.results || data.results.length === 0) {
+        throw new Error('Invalid stock symbol');
+      }
+
       await onAddStock(
         symbol.toUpperCase(),
         parseFloat(shares),
@@ -60,6 +111,7 @@ const AddStockForm = ({ onAddStock }: AddStockFormProps) => {
             id="symbol"
             value={symbol}
             onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+            onBlur={handleSymbolBlur}
             className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             placeholder="e.g., AAPL"
             disabled={loading}

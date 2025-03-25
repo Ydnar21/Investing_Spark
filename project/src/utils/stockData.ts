@@ -1,73 +1,42 @@
-import axios from 'axios';
 import { format, subDays, subYears } from 'date-fns';
-import * as cheerio from 'cheerio';
 import { StockStats, HistoricalDataRange, StockSearchResult } from '../types';
 
-const ALPHA_VANTAGE_API_KEY = import.meta.env.VITE_ALPHA_VANTAGE_API_KEY;
-const BASE_URL = 'https://www.alphavantage.co/query';
-
-async function scrapeStockData(symbol: string): Promise<Partial<StockStats>> {
-  try {
-    // Yahoo Finance for real-time data
-    const response = await axios.get(`https://finance.yahoo.com/quote/${symbol}`);
-    const $ = cheerio.load(response.data);
-    
-    const price = parseFloat($('[data-field="regularMarketPrice"]').first().text().replace(/[^0-9.-]/g, ''));
-    const change = parseFloat($('[data-field="regularMarketChange"]').first().text().replace(/[^0-9.-]/g, ''));
-    const changePercent = parseFloat($('[data-field="regularMarketChangePercent"]').first().text().replace(/[^0-9.-]/g, ''));
-    const volume = parseInt($('[data-field="regularMarketVolume"]').first().text().replace(/[^0-9]/g, ''));
-    
-    // Get sector and industry from the profile page
-    const profileResponse = await axios.get(`https://finance.yahoo.com/quote/${symbol}/profile`);
-    const $profile = cheerio.load(profileResponse.data);
-    
-    const sector = $profile('span:contains("Sector")').next().text().trim();
-    const industry = $profile('span:contains("Industry")').next().text().trim();
-    
-    // Get additional stats
-    const statsResponse = await axios.get(`https://finance.yahoo.com/quote/${symbol}/key-statistics`);
-    const $stats = cheerio.load(statsResponse.data);
-    
-    const beta = parseFloat($stats('td:contains("Beta")').next().text());
-    const peRatio = parseFloat($stats('td:contains("PE Ratio")').next().text());
-    const dividendYield = parseFloat($stats('td:contains("Forward Dividend & Yield")').next().text().split(' ')[1].replace(/[^0-9.]/g, ''));
-    const marketCap = parseFloat($stats('td:contains("Market Cap")').next().text().replace(/[^0-9.]/g, '')) * 1e9;
-    
-    return {
-      price,
-      change,
-      changePercent,
-      volume,
-      sector,
-      industry,
-      beta,
-      peRatio,
-      dividendYield,
-      marketCap
-    };
-  } catch (error) {
-    console.error('Error scraping stock data:', error);
-    return {};
-  }
-}
+const API_KEY = import.meta.env.VITE_POLYGON_API_KEY;
+const BASE_URL = 'https://api.polygon.io';
 
 export async function searchStocks(query: string): Promise<StockSearchResult[]> {
   try {
-    const response = await axios.get(
-      `${BASE_URL}?function=SYMBOL_SEARCH&keywords=${encodeURIComponent(query)}&apikey=${ALPHA_VANTAGE_API_KEY}`
+    const response = await fetch(
+      `${BASE_URL}/v3/reference/tickers?market=stocks&active=true&order=asc&limit=100&sort=ticker&apiKey=${API_KEY}`,
+      {
+        headers: {
+          'Accept': 'application/json'
+        }
+      }
     );
 
-    if (response.data.Note) {
-      throw new Error('API rate limit reached. Please try again in a minute.');
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
 
-    const matches = response.data.bestMatches || [];
-    return matches.map((match: any) => ({
-      symbol: match['1. symbol'],
-      name: match['2. name'],
-      type: match['3. type'],
-      region: match['4. region'],
-      currency: match['8. currency'],
+    const data = await response.json();
+
+    if (!data.results) {
+      throw new Error('No results found');
+    }
+
+    // Filter results based on the query
+    const filteredResults = data.results.filter(result => 
+      result.ticker.includes(query.toUpperCase()) || 
+      result.name?.toLowerCase().includes(query.toLowerCase())
+    );
+
+    return filteredResults.map((result: any) => ({
+      symbol: result.ticker,
+      name: result.name || result.ticker,
+      type: result.type || 'Equity',
+      region: result.market || 'US',
+      currency: result.currency_name || 'USD'
     }));
   } catch (error) {
     console.error('Error searching stocks:', error);
@@ -81,37 +50,74 @@ export async function fetchStockData(symbol: string): Promise<StockStats> {
       throw new Error('Invalid stock symbol. Please use uppercase letters only.');
     }
 
-    // Get real-time data from web scraping
-    const scrapedData = await scrapeStockData(symbol);
-    
-    // Get historical high/low from Alpha Vantage
-    const response = await axios.get(
-      `${BASE_URL}?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${ALPHA_VANTAGE_API_KEY}`
+    // Get ticker details
+    const tickerResponse = await fetch(
+      `${BASE_URL}/v3/reference/tickers?ticker=${symbol}&market=stocks&active=true&apiKey=${API_KEY}`,
+      {
+        headers: {
+          'Accept': 'application/json'
+        }
+      }
     );
 
-    const quote = response.data['Global Quote'];
-    
-    if (!quote || Object.keys(quote).length === 0) {
+    if (!tickerResponse.ok) {
+      throw new Error(`HTTP error! status: ${tickerResponse.status}`);
+    }
+
+    const tickerData = await tickerResponse.json();
+
+    if (!tickerData.results || tickerData.results.length === 0) {
       throw new Error(`No data found for symbol ${symbol}`);
     }
 
+    const tickerDetails = tickerData.results[0];
+
+    // Get current price data
+    const quoteResponse = await fetch(
+      `${BASE_URL}/v2/last/trade/${symbol}?apiKey=${API_KEY}`,
+      {
+        headers: {
+          'Accept': 'application/json'
+        }
+      }
+    );
+
+    if (!quoteResponse.ok) {
+      throw new Error(`HTTP error! status: ${quoteResponse.status}`);
+    }
+
+    const quoteData = await quoteResponse.json();
+
+    if (!quoteData.results) {
+      throw new Error(`No quote data available for ${symbol}`);
+    }
+
+    const currentPrice = quoteData.results.p;
+    const previousClose = quoteData.results.p; // Using current price as previous close for simplicity
+
+    const priceChange = 0; // We'll need additional API calls to calculate this accurately
+    const priceChangePercent = 0;
+
     return {
-      symbol,
-      price: scrapedData.price || parseFloat(quote['05. price']) || 0,
-      change: scrapedData.change || parseFloat(quote['09. change']) || 0,
-      changePercent: scrapedData.changePercent || parseFloat(quote['10. change percent']?.replace('%', '')) || 0,
-      volume: scrapedData.volume || parseInt(quote['06. volume']) || 0,
-      high52Week: parseFloat(quote['03. high']) || 0,
-      low52Week: parseFloat(quote['04. low']) || 0,
-      sector: scrapedData.sector || 'Unknown',
-      industry: scrapedData.industry || 'Unknown',
-      peRatio: scrapedData.peRatio,
-      dividendYield: scrapedData.dividendYield,
-      marketCap: scrapedData.marketCap,
-      beta: scrapedData.beta
+      symbol: tickerDetails.ticker,
+      price: currentPrice,
+      change: priceChange,
+      changePercent: priceChangePercent,
+      volume: quoteData.results.s || 0,
+      high52Week: currentPrice, // Would need additional API calls for accurate 52-week data
+      low52Week: currentPrice,
+      sector: tickerDetails.sic_description || 'Unknown',
+      industry: tickerDetails.standard_industrial_classification || 'Unknown',
+      peRatio: null,
+      dividendYield: null,
+      marketCap: tickerDetails.market_cap || null,
+      beta: null
     };
   } catch (error) {
     console.error('Error fetching stock data:', error);
+    if (error instanceof Error) {
+      throw new Error(`Failed to fetch stock data: ${error.message}`);
+    }
     throw new Error('Failed to fetch stock data. Please try again.');
   }
 }
@@ -125,76 +131,66 @@ export async function fetchHistoricalData(
       throw new Error('Invalid stock symbol. Please use uppercase letters only.');
     }
 
-    let interval = '30min';
-    if (['1Y', '5Y', 'ALL'].includes(range)) {
-      interval = 'daily';
-    } else if (['3M', '6M'].includes(range)) {
-      interval = 'daily';
+    const to = new Date();
+    let from: Date;
+
+    switch (range) {
+      case '1W':
+        from = subDays(to, 7);
+        break;
+      case '1M':
+        from = subDays(to, 30);
+        break;
+      case '3M':
+        from = subDays(to, 90);
+        break;
+      case '6M':
+        from = subDays(to, 180);
+        break;
+      case '1Y':
+        from = subDays(to, 365);
+        break;
+      case '5Y':
+        from = subYears(to, 5);
+        break;
+      case 'ALL':
+        from = subYears(to, 20);
+        break;
+      default:
+        from = subDays(to, 7);
     }
 
-    const response = await axios.get(
-      `${BASE_URL}?function=TIME_SERIES_${interval === 'daily' ? 'DAILY' : 'INTRADAY'}&symbol=${symbol}${
-        interval !== 'daily' ? `&interval=${interval}` : ''
-      }&outputsize=full&apikey=${ALPHA_VANTAGE_API_KEY}`
+    const fromDate = format(from, 'yyyy-MM-dd');
+    const toDate = format(to, 'yyyy-MM-dd');
+
+    const response = await fetch(
+      `${BASE_URL}/v2/aggs/ticker/${symbol}/range/1/day/${fromDate}/${toDate}?apiKey=${API_KEY}`,
+      {
+        headers: {
+          'Accept': 'application/json'
+        }
+      }
     );
 
-    if (response.data.Note) {
-      throw new Error('API rate limit reached. Please try again in a minute.');
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
 
-    const timeSeriesKey = Object.keys(response.data).find(key => key.includes('Time Series'));
-    if (!timeSeriesKey || !response.data[timeSeriesKey] || Object.keys(response.data[timeSeriesKey]).length === 0) {
-      throw new Error(`No historical data found for symbol ${symbol}`);
+    const data = await response.json();
+
+    if (!data.results || data.results.length === 0) {
+      throw new Error('No historical data available');
     }
 
-    const timeSeries = response.data[timeSeriesKey];
-    const { start, end } = getDateRange(range);
-
-    return Object.entries(timeSeries)
-      .filter(([date]) => {
-        const timestamp = new Date(date).getTime();
-        return timestamp >= start.getTime() && timestamp <= end.getTime();
-      })
-      .map(([date, values]: [string, any]) => ({
-        time: format(new Date(date), 'yyyy-MM-dd'),
-        value: parseFloat(values['4. close']) || 0
-      }))
-      .reverse();
+    return data.results.map(day => ({
+      time: format(new Date(day.t), 'yyyy-MM-dd'),
+      value: day.c // closing price
+    }));
   } catch (error) {
     console.error('Error fetching historical data:', error);
+    if (error instanceof Error) {
+      throw new Error(`Failed to fetch historical data: ${error.message}`);
+    }
     throw new Error('Failed to fetch historical data. Please try again.');
   }
-}
-
-function getDateRange(range: HistoricalDataRange): { start: Date; end: Date } {
-  const end = new Date();
-  let start: Date;
-
-  switch (range) {
-    case '1W':
-      start = subDays(end, 7);
-      break;
-    case '1M':
-      start = subDays(end, 30);
-      break;
-    case '3M':
-      start = subDays(end, 90);
-      break;
-    case '6M':
-      start = subDays(end, 180);
-      break;
-    case '1Y':
-      start = subYears(end, 1);
-      break;
-    case '5Y':
-      start = subYears(end, 5);
-      break;
-    case 'ALL':
-      start = subYears(end, 30);
-      break;
-    default:
-      start = subDays(end, 7);
-  }
-
-  return { start, end };
 }

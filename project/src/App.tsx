@@ -38,7 +38,7 @@ function App() {
       setStockStats(stockData);
       setChartData(historicalData);
     } catch (err) {
-      setError('Failed to fetch stock data. Please try again.');
+      setError(err instanceof Error ? err.message : 'Failed to fetch stock data. Please try again.');
       console.error(err);
     } finally {
       setLoading(false);
@@ -48,15 +48,22 @@ function App() {
   const handleAddStock = async (symbol: string, shares: number, averagePrice: number) => {
     try {
       const stockData = await fetchStockData(symbol);
+      if (!stockData) {
+        throw new Error('Failed to fetch stock data');
+      }
+      
       addStock({
         symbol,
         shares,
         averagePrice,
         stats: stockData,
       });
+      
+      return true;
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to add stock to portfolio';
       console.error('Error adding stock:', err);
-      setError('Failed to add stock to portfolio. Please try again.');
+      throw new Error(errorMessage);
     }
   };
 
@@ -68,7 +75,7 @@ function App() {
       const historicalData = await fetchHistoricalData(stockStats.symbol, range);
       setChartData(historicalData);
     } catch (err) {
-      setError('Failed to fetch historical data. Please try again.');
+      setError(err instanceof Error ? err.message : 'Failed to fetch historical data. Please try again.');
       console.error(err);
     } finally {
       setChartLoading(false);

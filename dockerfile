@@ -1,9 +1,10 @@
 FROM node:20-alpine
 
-WORKDIR /app
+RUN mkdir /Investing_Spark
+WORKDIR /Investing_Spark
 
 # Copy package files
-COPY package*.json ./
+COPY /project/package*.json /Investing_Spark/
 
 # Install dependencies
 RUN npm install
@@ -12,7 +13,7 @@ RUN npm install
 COPY . .
 
 # Build the app
-RUN npm run build
+RUN npm run 
 
 # Install serve to run the built app
 RUN npm install -g serve
